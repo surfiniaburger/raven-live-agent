@@ -1,0 +1,47 @@
+[
+  {
+    "id": "fema_nims",
+    "title": "National Incident Management System (NIMS)",
+    "organization": "FEMA",
+    "url": "https://www.fema.gov/emergency-managers/nims",
+    "tier": "Tier 1",
+    "doc_type": "Framework",
+    "jurisdiction": "us"
+  },
+  {
+    "id": "fema_ics",
+    "title": "Incident Command System Resources",
+    "organization": "FEMA",
+    "url": "https://training.fema.gov/emiweb/is/icsresource/",
+    "tier": "Tier 1",
+    "doc_type": "Framework",
+    "jurisdiction": "us"
+  },
+  {
+    "id": "osha_emergency",
+    "title": "Emergency Preparedness and Response",
+    "organization": "OSHA",
+    "url": "https://www.osha.gov/emergency-preparedness",
+    "tier": "Tier 1",
+    "doc_type": "Guidance",
+    "jurisdiction": "us"
+  },
+  {
+    "id": "cisa_incident",
+    "title": "CISA Incident Response Resources",
+    "organization": "CISA",
+    "url": "https://www.cisa.gov/resources-tools/resources",
+    "tier": "Tier 2",
+    "doc_type": "Guidance",
+    "jurisdiction": "us"
+  },
+  {
+    "id": "internal_sop_repo",
+    "title": "Approved Internal Safety SOP Repository",
+    "organization": "Your Organization",
+    "url": "https://example.internal/safety/sop",
+    "tier": "Tier 1",
+    "doc_type": "SOP",
+    "jurisdiction": "global"
+  }
+]

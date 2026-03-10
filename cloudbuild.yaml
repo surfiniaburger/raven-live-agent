@@ -1,0 +1,86 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/raven-backend', './backend']
+    id: 'build-backend'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/raven-backend']
+    id: 'push-backend'
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'raven-backend'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/raven-backend'
+      - '--region'
+      - '$_REGION'
+      - '--allow-unauthenticated'
+      - '--set-env-vars'
+      - 'GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GOOGLE_CLOUD_LOCATION=$_REGION,GOOGLE_GENAI_USE_VERTEXAI=$_GOOGLE_GENAI_USE_VERTEXAI,GOOGLE_API_KEY=$_GOOGLE_API_KEY,VECTOR_COLLECTION_ID=$_VECTOR_COLLECTION_ID,VECTOR_FIELD=$_VECTOR_FIELD,ENABLE_BASIC_GUARDRAILS=$_ENABLE_BASIC_GUARDRAILS,MODEL_ID=$_MODEL_ID'
+    id: 'deploy-backend'
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        gcloud run services describe raven-backend --region $_REGION --format 'value(status.url)' > /workspace/backend_url.txt
+        echo "Backend URL: $(cat /workspace/backend_url.txt)"
+    id: 'get-backend-url'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        BACKEND_URL=$(cat /workspace/backend_url.txt)
+        BACKEND_WS_URL=$(echo "$BACKEND_URL" | sed 's#^https://#wss://#; s#^http://#ws://#')
+        docker build \
+          --build-arg VITE_WS_BASE_URL=$BACKEND_WS_URL \
+          -t gcr.io/$PROJECT_ID/raven-frontend ./frontend
+    id: 'build-frontend'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/raven-frontend']
+    id: 'push-frontend'
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'raven-frontend'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/raven-frontend'
+      - '--region'
+      - '$_REGION'
+      - '--allow-unauthenticated'
+    id: 'deploy-frontend'
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        echo "------------------------------------------------"
+        echo "DEPLOYMENT COMPLETE"
+        echo "------------------------------------------------"
+        echo "Backend: $(cat /workspace/backend_url.txt)"
+        echo "Frontend: $(gcloud run services describe raven-frontend --region $_REGION --format 'value(status.url)')"
+        echo "------------------------------------------------"
+    id: 'final-output'
+
+substitutions:
+  _REGION: 'us-central1'
+  _GOOGLE_GENAI_USE_VERTEXAI: 'TRUE'
+  _GOOGLE_API_KEY: ''
+  _VECTOR_COLLECTION_ID: 'raven-incident-knowledge'
+  _VECTOR_FIELD: 'content_embedding'
+  _ENABLE_BASIC_GUARDRAILS: 'true'
+  _MODEL_ID: 'gemini-live-2.5-flash-native-audio'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

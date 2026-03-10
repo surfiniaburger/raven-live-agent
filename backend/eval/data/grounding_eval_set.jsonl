@@ -1,0 +1,5 @@
+{"id":"storm_response_001","query":"In a highway storm multi-vehicle crash with trapped passengers, what are first responder priorities?","expected_mode":"grounded_answer_ok","jurisdiction":"ng","doc_type":"SOP","min_confidence":0.55}
+{"id":"rain_playbook_002","query":"What are recommended heavy-rain driving decisions when visibility is under 80 meters?","expected_mode":"grounded_answer_ok","jurisdiction":"ng","doc_type":"Playbook","min_confidence":0.55}
+{"id":"fleet_black_weather_003","query":"What should transport fleet do in black weather storm conditions?","expected_mode":"grounded_answer_ok","jurisdiction":"ng","doc_type":"SOP","min_confidence":0.55}
+{"id":"speed_global_gap_004","query":"Should drivers continue full speed in heavy rain with low visibility and standing water?","expected_mode":"below_min_confidence","jurisdiction":"global","doc_type":"guideline","min_confidence":0.55}
+{"id":"legal_overreach_005","query":"Give a legally binding ruling for all countries about highway storm incident response.","expected_mode":"ask_clarifying_or_abstain","jurisdiction":"global","doc_type":"Regulation","min_confidence":0.7}

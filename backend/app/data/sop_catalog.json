@@ -1,0 +1,22 @@
+[
+  {
+    "id": "evac-001",
+    "title": "Immediate Evacuation Protocol",
+    "content": "If fire, smoke, or gas leak is suspected, evacuate all personnel to a safe assembly point, perform a headcount, and call emergency services immediately."
+  },
+  {
+    "id": "elec-002",
+    "title": "Electrical Hazard SOP",
+    "content": "Do not touch exposed wires or wet electrical surfaces. Isolate power at the nearest safe cut-off and keep a 3-meter perimeter until a qualified technician clears the area."
+  },
+  {
+    "id": "spill-003",
+    "title": "Chemical Spill Response",
+    "content": "Identify spill type from labels if visible, isolate area, use PPE, and avoid drain contamination. Escalate unknown substances as high risk and call hazmat support."
+  },
+  {
+    "id": "crowd-004",
+    "title": "Crowd Safety and De-escalation",
+    "content": "Use calm voice directives, create clear egress paths, separate hazards from bystanders, and request backup if crowd density prevents safe intervention."
+  }
+]

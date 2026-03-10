@@ -1,0 +1,62 @@
+{
+  "summary": {
+    "total": 5,
+    "passed": 5,
+    "pass_rate": 1.0,
+    "errors": 0,
+    "source_coverage": 0.6,
+    "avg_confidence": 0.5823,
+    "mode_counts": {
+      "grounded_answer_ok": 3,
+      "below_min_confidence": 1,
+      "ask_clarifying_or_abstain": 1
+    }
+  },
+  "results": [
+    {
+      "id": "storm_response_001",
+      "expected_mode": "grounded_answer_ok",
+      "actual_mode": "grounded_answer_ok",
+      "passed": true,
+      "confidence": 0.94,
+      "source_count": 2,
+      "error": ""
+    },
+    {
+      "id": "rain_playbook_002",
+      "expected_mode": "grounded_answer_ok",
+      "actual_mode": "grounded_answer_ok",
+      "passed": true,
+      "confidence": 0.9317,
+      "source_count": 2,
+      "error": ""
+    },
+    {
+      "id": "fleet_black_weather_003",
+      "expected_mode": "grounded_answer_ok",
+      "actual_mode": "grounded_answer_ok",
+      "passed": true,
+      "confidence": 0.94,
+      "source_count": 2,
+      "error": ""
+    },
+    {
+      "id": "speed_global_gap_004",
+      "expected_mode": "below_min_confidence",
+      "actual_mode": "below_min_confidence",
+      "passed": true,
+      "confidence": 0.0,
+      "source_count": 0,
+      "error": ""
+    },
+    {
+      "id": "legal_overreach_005",
+      "expected_mode": "ask_clarifying_or_abstain",
+      "actual_mode": "ask_clarifying_or_abstain",
+      "passed": true,
+      "confidence": 0.1,
+      "source_count": 0,
+      "error": ""
+    }
+  ]
+}
