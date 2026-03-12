@@ -62,6 +62,11 @@ export function useGeminiSocket(url) {
                         }
                     });
                 }
+                
+                // Handle interruption and turn boundaries
+                if (msg.interrupted || msg.turnComplete) {
+                   audioStreamer.current.stop();
+                }
             } catch (e) {
                 console.error('Failed to parse message', e, event.data.slice(0, 100));
             }

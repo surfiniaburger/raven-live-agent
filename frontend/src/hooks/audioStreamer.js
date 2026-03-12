@@ -87,4 +87,10 @@ export class AudioStreamer {
             this.context.resume();
         }
     }
+
+    stop() {
+        this.audioQueue = [];
+        this.isPlaying = false;
+        console.log('[AudioStreamer] Playback stopped. Buffer cleared.');
+    }
 }

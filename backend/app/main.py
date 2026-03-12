@@ -73,6 +73,12 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, session_id: str
             input_audio_transcription=types.AudioTranscriptionConfig(),
             output_audio_transcription=types.AudioTranscriptionConfig(),
             session_resumption=types.SessionResumptionConfig(),
+            context_window_compression=types.ContextWindowCompressionConfig(
+                trigger_tokens=100000,
+                sliding_window=types.SlidingWindow(
+                    target_tokens=80000
+                )
+            )
         )
 
     session = await session_service.get_session(app_name=APP_NAME, user_id=user_id, session_id=session_id)
@@ -159,6 +165,33 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, session_id: str
             live_request_queue=live_request_queue,
             run_config=run_config,
         ):
+            if event.error_code:
+                logger.error("Model error (Session %s): %s - %s", session_id, event.error_code, event.error_message)
+                
+                # Check for Terminal errors
+                if event.error_code in ["SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "MAX_TOKENS", "CANCELLED"]:
+                    await send_system_warning(event.error_code, event.error_message or "Terminal error.")
+                    break
+
+                # For rate limit or timeout errors, we log and back off via sleep
+                if event.error_code == "RESOURCE_EXHAUSTED":
+                    await asyncio.sleep(1.0)
+                    continue
+
+                # For transient network issues
+                if event.error_code in ["UNAVAILABLE", "DEADLINE_EXCEEDED"]:
+                    continue
+
+            # Log interruptions
+            if getattr(event.server_content, "interrupted", False):
+                logger.info("Session %s interrupted by user voice activity", session_id)
+
+            # Log billing metadata on completion
+            if getattr(event.server_content, "turn_complete", False):
+                if event.usage_metadata:
+                    logger.info("Session %s usage: %s total tokens", session_id, event.usage_metadata.total_token_count)
+
+            # Forward standard events to websocket
             await websocket.send_text(event.model_dump_json(exclude_none=True, by_alias=True))
 
     try:
