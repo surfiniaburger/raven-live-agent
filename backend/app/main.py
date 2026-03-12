@@ -1,8 +1,10 @@
 import asyncio
+import base64
 import json
 import logging
 import os
 import warnings
+from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -16,11 +18,15 @@ from google.genai import types
 try:
     from app.agents.live_incident_agent import root_agent
     from app.safety.basic_guardrails import BasicGuardrailsPlugin
+    from app.fallback.eleven_fallback import ElevenFallbackEngine, build_fallback_config
 except ModuleNotFoundError:
     from agents.live_incident_agent import root_agent
     from safety.basic_guardrails import BasicGuardrailsPlugin
+    from fallback.eleven_fallback import ElevenFallbackEngine, build_fallback_config
 
-load_dotenv()
+_dotenv_path = Path(__file__).resolve().parents[1] / ".env"
+load_dotenv(dotenv_path=_dotenv_path, override=True)
+load_dotenv(override=True)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -73,12 +79,6 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, session_id: str
             input_audio_transcription=types.AudioTranscriptionConfig(),
             output_audio_transcription=types.AudioTranscriptionConfig(),
             session_resumption=types.SessionResumptionConfig(),
-            context_window_compression=types.ContextWindowCompressionConfig(
-                trigger_tokens=100000,
-                sliding_window=types.SlidingWindow(
-                    target_tokens=80000
-                )
-            )
         )
 
     session = await session_service.get_session(app_name=APP_NAME, user_id=user_id, session_id=session_id)
@@ -102,12 +102,64 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, session_id: str
         }
         await websocket.send_text(json.dumps(payload))
 
+    async def send_mode_switch(mode: str, reason: str) -> None:
+        payload = {
+            "serverContent": {
+                "modelTurn": {
+                    "parts": [
+                        {
+                            "text": f"[SYSTEM:MODE_SWITCH] mode={mode} reason={reason}",
+                        }
+                    ]
+                }
+            }
+        }
+        await websocket.send_text(json.dumps(payload))
+
+    async def send_fallback_response(text: str, audio_bytes: bytes | None) -> None:
+        parts = [{"text": text}]
+        if audio_bytes:
+            parts.append(
+                {
+                    "inlineData": {
+                        "mimeType": "audio/pcm;rate=24000",
+                        "data": base64.b64encode(audio_bytes).decode("utf-8"),
+                    }
+                }
+            )
+        payload = {
+            "serverContent": {
+                "modelTurn": {
+                    "parts": parts,
+                }
+            }
+        }
+        await websocket.send_text(json.dumps(payload))
+
+    mode_state = {"mode": "live"}
+    fallback_engine: ElevenFallbackEngine | None = None
+    fallback_task: asyncio.Task | None = None
+
     async def upstream_task() -> None:
         while True:
-            message = await websocket.receive()
+            try:
+                message = await websocket.receive()
+            except WebSocketDisconnect:
+                return
+            except RuntimeError:
+                return
             if "bytes" in message:
-                audio_blob = types.Blob(mime_type="audio/pcm;rate=16000", data=message["bytes"])
-                live_request_queue.send_realtime(audio_blob)
+                audio_bytes = message["bytes"]
+                logger.info(
+                    "Audio frame received: bytes=%d mode=%s",
+                    len(audio_bytes),
+                    mode_state["mode"],
+                )
+                if mode_state["mode"] == "fallback" and fallback_engine:
+                    await fallback_engine.send_audio(audio_bytes)
+                else:
+                    audio_blob = types.Blob(mime_type="audio/pcm;rate=16000", data=audio_bytes)
+                    live_request_queue.send_realtime(audio_blob)
             elif "text" in message:
                 try:
                     payload = json.loads(message["text"])
@@ -129,7 +181,12 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, session_id: str
                     if not isinstance(text_value, str):
                         await send_system_warning("BAD_TEXT", "Expected string at payload.text.")
                         continue
-                    live_request_queue.send_content(types.Content(parts=[types.Part(text=text_value)]))
+                    if mode_state["mode"] == "fallback" and fallback_engine:
+                        response_text = await fallback_engine.generate_response(text_value)
+                        audio = await fallback_engine.synthesize_tts(response_text)
+                        await send_fallback_response(response_text, audio)
+                    else:
+                        live_request_queue.send_content(types.Content(parts=[types.Part(text=text_value)]))
                 elif payload.get("type") == "audio":
                     import base64
 
@@ -142,7 +199,15 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, session_id: str
                     except Exception:  # noqa: BLE001
                         await send_system_warning("BAD_AUDIO", "Audio base64 decode failed.")
                         continue
-                    live_request_queue.send_realtime(types.Blob(mime_type="audio/pcm;rate=16000", data=audio_data))
+                    logger.info(
+                        "Audio payload received: bytes=%d mode=%s",
+                        len(audio_data),
+                        mode_state["mode"],
+                    )
+                    if mode_state["mode"] == "fallback" and fallback_engine:
+                        await fallback_engine.send_audio(audio_data)
+                    else:
+                        live_request_queue.send_realtime(types.Blob(mime_type="audio/pcm;rate=16000", data=audio_data))
                 elif payload.get("type") == "image":
                     import base64
 
@@ -156,52 +221,93 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, session_id: str
                         await send_system_warning("BAD_IMAGE", "Image base64 decode failed.")
                         continue
                     mime_type = payload.get("mimeType", "image/jpeg")
-                    live_request_queue.send_realtime(types.Blob(mime_type=mime_type, data=image_data))
+                    if mode_state["mode"] == "live":
+                        live_request_queue.send_realtime(types.Blob(mime_type=mime_type, data=image_data))
+                    elif fallback_engine:
+                        fallback_engine.set_latest_image(image_data, mime_type)
+                        logger.info("Image frame received for fallback: %s bytes", len(image_data))
 
     async def downstream_task() -> None:
-        async for event in runner.run_live(
-            user_id=user_id,
-            session_id=session_id,
-            live_request_queue=live_request_queue,
-            run_config=run_config,
-        ):
-            if event.error_code:
-                logger.error("Model error (Session %s): %s - %s", session_id, event.error_code, event.error_message)
-                
-                # Check for Terminal errors
-                if event.error_code in ["SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "MAX_TOKENS", "CANCELLED"]:
-                    await send_system_warning(event.error_code, event.error_message or "Terminal error.")
-                    break
+        try:
+            async for event in runner.run_live(
+                user_id=user_id,
+                session_id=session_id,
+                live_request_queue=live_request_queue,
+                run_config=run_config,
+            ):
+                await websocket.send_text(event.model_dump_json(exclude_none=True, by_alias=True))
+        except WebSocketDisconnect:
+            return
 
-                # For rate limit or timeout errors, we log and back off via sleep
-                if event.error_code == "RESOURCE_EXHAUSTED":
-                    await asyncio.sleep(1.0)
-                    continue
+    async def fallback_loop() -> None:
+        assert fallback_engine is not None
+        while True:
+            transcript = await fallback_engine.next_transcript()
+            if not transcript:
+                continue
+            logger.info("Fallback STT commit: %s", transcript[:200])
+            await send_system_warning("STT_COMMIT", transcript)
+            response_text = await fallback_engine.generate_response(transcript)
+            audio = await fallback_engine.synthesize_tts(response_text)
+            await send_fallback_response(response_text, audio)
 
-                # For transient network issues
-                if event.error_code in ["UNAVAILABLE", "DEADLINE_EXCEEDED"]:
-                    continue
-
-            # Log interruptions
-            if getattr(event.server_content, "interrupted", False):
-                logger.info("Session %s interrupted by user voice activity", session_id)
-
-            # Log billing metadata on completion
-            if getattr(event.server_content, "turn_complete", False):
-                if event.usage_metadata:
-                    logger.info("Session %s usage: %s total tokens", session_id, event.usage_metadata.total_token_count)
-
-            # Forward standard events to websocket
-            await websocket.send_text(event.model_dump_json(exclude_none=True, by_alias=True))
-
+    upstream = asyncio.create_task(upstream_task())
+    downstream = asyncio.create_task(downstream_task())
     try:
-        await asyncio.gather(upstream_task(), downstream_task())
+        done, pending = await asyncio.wait(
+            [upstream, downstream],
+            return_when=asyncio.FIRST_EXCEPTION,
+        )
+        if downstream in done and downstream.exception():
+            exc = downstream.exception()
+            logger.error("Socket failure: %s", exc)
+            error_text = str(exc).lower()
+            fallback_trigger = (
+                "1008" in error_text
+                or "policy violation" in error_text
+                or "timed out during opening handshake" in error_text
+                or "timeout" in error_text
+                or "oauth2.googleapis.com" in error_text
+                or "transporterror" in error_text
+                or "ssl" in error_text
+            )
+            if fallback_trigger:
+                mode_state["mode"] = "fallback"
+                reason = "live_model_policy_1008" if "1008" in error_text or "policy violation" in error_text else "live_model_handshake_timeout"
+                await send_mode_switch("fallback", reason)
+                cfg = build_fallback_config()
+                if not cfg.eleven_api_key or not cfg.eleven_voice_id:
+                    logger.error("Fallback disabled: ELEVENLABS_API_KEY or ELEVENLABS_VOICE_ID missing.")
+                    await send_system_warning(
+                        "FALLBACK_DISABLED",
+                        "ELEVENLABS_API_KEY or ELEVENLABS_VOICE_ID missing; fallback voice unavailable.",
+                    )
+                else:
+                    try:
+                        fallback_engine = ElevenFallbackEngine(cfg, root_agent.instruction)
+                        logger.info("Initializing fallback engine (ElevenLabs STT/TTS + %s).", cfg.fallback_model_id)
+                        await fallback_engine.start()
+                        logger.info("Fallback engine started.")
+                        fallback_task = asyncio.create_task(fallback_loop())
+                    except Exception as fallback_exc:  # noqa: BLE001
+                        await send_system_warning(
+                            "FALLBACK_INIT_FAILED",
+                            f"Fallback init failed: {fallback_exc}",
+                        )
+                    wait_tasks = [upstream]
+                    if fallback_task:
+                        wait_tasks.append(fallback_task)
+                    await asyncio.wait(wait_tasks, return_when=asyncio.FIRST_EXCEPTION)
+            else:
+                raise exc
     except WebSocketDisconnect:
         logger.info("Client disconnected")
-    except Exception as exc:
-        logger.error("Socket failure: %s", exc)
     finally:
         live_request_queue.close()
+        if fallback_task:
+            fallback_task.cancel()
+        if fallback_engine:
+            await fallback_engine.close()
 
 
 if __name__ == "__main__":

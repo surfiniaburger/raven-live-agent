@@ -190,6 +190,15 @@ This reports:
 
 If Vector Search is not yet provisioned, retrieval tools use a local JSONL fallback search so you can still test end-to-end behavior.
 
+## Testing
+
+Run backend unit tests (including ElevenLabs fallback harness):
+
+```bash
+cd /Users/surfiniaburger/Desktop/way-back-home/raven-standalone/backend
+uv run pytest -q
+```
+
 ### Agent grounding behavior
 
 The live agent now has a vector retrieval tool:

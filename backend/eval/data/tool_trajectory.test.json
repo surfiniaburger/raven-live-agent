@@ -1,0 +1,66 @@
+[
+  {
+    "query": "We are on the Lagos-Ibadan expressway and heavy rain just started. Check weather risk and give 3 actions.",
+    "expected_tool_use": [
+      {
+        "tool_name": "fetch_weather_context",
+        "tool_input": {
+          "jurisdiction": "ng",
+          "location": "Lagos-Ibadan expressway",
+          "horizon_hours": 24
+        }
+      }
+    ],
+    "reference": "Weather: Risk level: HIGH\nActions:\n1. Reduce speed and maintain a safe distance.\n2. Avoid driving through flooded areas or standing water.\n3. Use headlights and fog lights.\nSources:\n- nimet-scpai - NiMet SCPAI - https://sadis2.nimet.gov.ng/SCPAI/api.php\n- nimet-weather - NiMet Weather Forecast Bulletin - https://nimet.gov.ng/weather_forecast_bulletin"
+  },
+  {
+    "query": "There's smoke inside the bus and people are coughing. Detect hazard and summarize.",
+    "expected_tool_use": [
+      {
+        "tool_name": "detect_hazard",
+        "tool_input": {
+          "scene_summary": "Smoke inside the bus and people are coughing."
+        }
+      }
+    ],
+    "reference": "Hazard level: HIGH\nImmediate steps:\nEvacuate passengers, move upwind, and call emergency services."
+  },
+  {
+    "query": "Pull SOP guidance for multi-vehicle crash with trapped passengers.",
+    "expected_tool_use": [
+      {
+        "tool_name": "search_sop_guidance",
+        "tool_input": {
+          "query": "multi-vehicle crash with trapped passengers"
+        }
+      }
+    ],
+    "reference": "Guidance: Stabilize scene, secure perimeter, coordinate extrication, request medical support.\nSources:\n- int-sop-001 - Multi-vehicle crash response - local://sop/int-sop-001"
+  },
+  {
+    "query": "Search internal incident knowledge for Nigerian highway storm collision patterns.",
+    "expected_tool_use": [
+      {
+        "tool_name": "search_incident_knowledge",
+        "tool_input": {
+          "query": "Nigerian highway storm collision patterns",
+          "jurisdiction": "ng"
+        }
+      }
+    ],
+    "reference": "Guidance: Provide grounded summary of storm collision patterns and caution on low confidence.\nSources:\n- int-postmortem-001 - Highway storm collision patterns - https://example.internal/incidents/2026-02-ekiti-lagos-storm"
+  },
+  {
+    "query": "Generate an incident brief for a trailer-bus collision with multiple cars.",
+    "expected_tool_use": [
+      {
+        "tool_name": "generate_incident_brief",
+        "tool_input": {
+          "incident_notes": "trailer-bus collision with multiple cars",
+          "actions_taken": "No actions provided."
+        }
+      }
+    ],
+    "reference": "Incident brief:\nSummary: trailer-bus collision with multiple cars\nActions: No actions provided.\nNext steps: Escalate to human supervisor if hazard level remains HIGH."
+  }
+]
