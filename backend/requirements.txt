@@ -3,6 +3,9 @@ websockets==15.0.1
 python-dotenv==1.2.1
 fastapi==0.128.3
 uvicorn==0.40.0
-google-adk==1.24.1
+google-adk[eval]==1.27.0
 httpx==0.28.1
 google-cloud-vectorsearch>=0.3.0
+elevenlabs>=1.0.0
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
