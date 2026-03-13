@@ -3,7 +3,6 @@ import { AudioStreamer } from './audioStreamer';
 import { AudioRecorder } from './audioRecorder';
 
 const SILENCE_DETECTION_MS = 700;
-const SILENCE_TIMER_MS = 750;
 
 
 export function useGeminiSocket(
@@ -74,9 +73,8 @@ export function useGeminiSocket(
                             lastAudioAt.current = Date.now();
                             if (silenceTimer.current) clearTimeout(silenceTimer.current);
                             silenceTimer.current = setTimeout(() => {
-                                const age = Date.now() - lastAudioAt.current;
-                                if (age >= SILENCE_DETECTION_MS) assistantSpeaking.current = false;
-                            }, SILENCE_TIMER_MS);
+                                assistantSpeaking.current = false;
+                            }, SILENCE_DETECTION_MS);
                         }
                     });
                 }
