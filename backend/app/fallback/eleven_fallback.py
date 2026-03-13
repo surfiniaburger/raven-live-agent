@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import os
 import time
+import uuid
 from dataclasses import dataclass
 from typing import Any, Callable
 
 import httpx
+import websockets
+from websockets.connection import State as WsState
 from websockets.exceptions import ConnectionClosed
 from google import genai
 from google.genai import types
@@ -20,9 +24,8 @@ try:
         ElevenLabs,
         RealtimeAudioOptions,
         RealtimeEvents,
-        VoiceSettings,
     )
-except Exception:  # noqa: BLE001
+except ImportError:  # noqa: BLE001
     ElevenLabs = None  # type: ignore
 
 from app.tools.grounding_tools import fetch_weather_context, search_sop_guidance
@@ -56,6 +59,8 @@ class ElevenFallbackEngine:
         self._stt_reconnect_task: asyncio.Task | None = None
         self._stt_reconnect_lock = asyncio.Lock()
         self._last_stt_close_log: float = 0.0
+        self._tts_ws = None
+        self._tts_lock = asyncio.Lock()
 
     @property
     def ready(self) -> bool:
@@ -115,6 +120,12 @@ class ElevenFallbackEngine:
             self._stt_reconnect_task.cancel()
         if self._stt_conn:
             await self._stt_conn.close()
+        if self._tts_ws:
+            try:
+                await self._tts_ws.close()
+            except Exception:  # noqa: BLE001
+                pass
+            self._tts_ws = None
         await self._http.aclose()
 
     def _schedule_reconnect(self) -> None:
@@ -218,44 +229,108 @@ class ElevenFallbackEngine:
         resp.raise_for_status()
         return resp.content
 
-    async def stream_tts(self, text: str):
-        if not self._client:
-            raise RuntimeError("elevenlabs sdk not installed")
-        iterator = self._client.text_to_speech.stream(
-            voice_id=self.config.eleven_voice_id,
-            text=text,
-            model_id=self.config.eleven_tts_model,
-            output_format=self.config.tts_output_format,
-            voice_settings=VoiceSettings(stability=0.3, similarity_boost=0.7),
-            optimize_streaming_latency=2,
-        )
-        pending = b""
-        def _next_chunk(it):
-            try:
-                return next(it)
-            except StopIteration:
-                return None
+    def _tts_ws_open(self) -> bool:
+        """Cross-version helper: True if the persistent TTS WebSocket is connected."""
+        ws = self._tts_ws
+        if ws is None:
+            return False
+        try:
+            return ws.state == WsState.OPEN
+        except AttributeError:
+            # Fallback for older websockets that had .open / .closed attributes
+            return getattr(ws, 'open', not getattr(ws, 'closed', True))
 
-        while True:
-            chunk = await asyncio.to_thread(_next_chunk, iterator)
-            if chunk is None:
-                break
-            if not chunk:
-                continue
-            pending += chunk
-            if len(pending) < 2:
-                continue
-            # Ensure 16-bit alignment for PCM playback.
-            aligned_len = len(pending) - (len(pending) % 2)
-            if aligned_len <= 0:
-                continue
-            emit, pending = pending[:aligned_len], pending[aligned_len:]
-            yield emit
-        if pending:
-            # Drop final odd byte if present.
-            aligned_len = len(pending) - (len(pending) % 2)
-            if aligned_len:
-                yield pending[:aligned_len]
+    async def _ensure_tts_ws(self):
+        if self._tts_ws_open():
+            return self._tts_ws
+        async with self._tts_lock:
+            if self._tts_ws_open():
+                return self._tts_ws
+            if not self.config.eleven_api_key:
+                raise RuntimeError("ELEVENLABS_API_KEY is missing")
+            url = (
+                "wss://api.elevenlabs.io/v1/text-to-speech/"
+                f"{self.config.eleven_voice_id}/multi-stream-input"
+                f"?model_id={self.config.eleven_tts_model}"
+                f"&output_format={self.config.tts_output_format}"
+            )
+            self._tts_ws = await websockets.connect(
+                url,
+                max_size=16 * 1024 * 1024,
+                additional_headers={"xi-api-key": self.config.eleven_api_key},
+            )
+            return self._tts_ws
+
+    async def _close_tts_context(self, context_id: str) -> None:
+        if not self._tts_ws_open():
+            return
+        try:
+            await self._tts_ws.send(
+                json.dumps(
+                    {
+                        "context_id": context_id,
+                        "close_context": True,
+                    }
+                )
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to close ElevenLabs TTS context: %s", exc)
+
+    async def stream_tts(self, text: str):
+        ws = await self._ensure_tts_ws()
+        context_id = f"ctx_{uuid.uuid4().hex}"
+        payload = {
+            "text": text,
+            "context_id": context_id,
+            "voice_settings": {"stability": 0.3, "similarity_boost": 0.7},
+        }
+        await ws.send(json.dumps(payload))
+        await ws.send(json.dumps({"context_id": context_id, "flush": True}))
+        pending = b""
+        try:
+            while True:
+                raw = await ws.recv()
+                if isinstance(raw, bytes):
+                    try:
+                        raw = raw.decode("utf-8")
+                    except Exception:  # noqa: BLE001
+                        continue
+                try:
+                    data = json.loads(raw)
+                except Exception:  # noqa: BLE001
+                    continue
+                ctx = data.get("contextId") or data.get("context_id")
+                if ctx and ctx != context_id:
+                    continue
+                if data.get("error"):
+                    logger.error("ElevenLabs TTS error: %s", data.get("error"))
+                    break
+                audio_b64 = data.get("audio") or data.get("audio_base_64")
+                if audio_b64:
+                    try:
+                        chunk = base64.b64decode(audio_b64)
+                    except Exception:  # noqa: BLE001
+                        chunk = b""
+                    if chunk:
+                        pending += chunk
+                        if len(pending) >= 2:
+                            aligned_len = len(pending) - (len(pending) % 2)
+                            if aligned_len > 0:
+                                emit, pending = pending[:aligned_len], pending[aligned_len:]
+                                yield emit
+                if data.get("is_final") or data.get("final"):
+                    break
+        except asyncio.CancelledError:
+            await self._close_tts_context(context_id)
+            raise
+        except ConnectionClosed as exc:
+            logger.warning("ElevenLabs TTS websocket closed: %s", exc)
+        finally:
+            await self._close_tts_context(context_id)
+            if pending:
+                aligned_len = len(pending) - (len(pending) % 2)
+                if aligned_len:
+                    yield pending[:aligned_len]
 
     def _run_fallback_tools(self, text: str) -> str:
         lower = text.lower()
