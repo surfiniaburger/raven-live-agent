@@ -14,7 +14,9 @@ export function useGeminiSocket(
     const lastInterruptAt = useRef(0);
     const audioStreamer = useRef(new AudioStreamer(24000)); // Default to 24kHz for Gemini Live
     const audioRecorder = useRef(new AudioRecorder(16000)); // Record at 16kHz for Gemini Input
-
+    const assistantSpeaking = useRef(false);
+    const lastAudioAt = useRef(0);
+    const silenceTimer = useRef(null);
     const connect = useCallback(() => {
         if (ws.current?.readyState === WebSocket.OPEN) return;
 
@@ -64,17 +66,28 @@ export function useGeminiSocket(
                             console.log('[useGeminiSocket] inline audio chunk', part.inlineData.data.length);
                             audioStreamer.current.resume();
                             audioStreamer.current.addPCM16(part.inlineData.data);
+                            assistantSpeaking.current = true;
+                            lastAudioAt.current = Date.now();
+                            if (silenceTimer.current) clearTimeout(silenceTimer.current);
+                            silenceTimer.current = setTimeout(() => {
+                                const age = Date.now() - lastAudioAt.current;
+                                if (age >= 700) assistantSpeaking.current = false;
+                            }, 750);
                         }
                     });
                 }
-                
+
                 // Handle interruption and turn boundaries
                 if (msg.interrupted) {
                     console.warn('[useGeminiSocket] Interrupted event received');
                     audioStreamer.current.stop();
+                    assistantSpeaking.current = false;
+                    if (silenceTimer.current) clearTimeout(silenceTimer.current);
                 } else if (msg.turnComplete) {
                     console.log('[useGeminiSocket] Turn complete');
                     audioStreamer.current.stop();
+                    assistantSpeaking.current = false;
+                    if (silenceTimer.current) clearTimeout(silenceTimer.current);
                 }
             } catch (e) {
                 console.error('Failed to parse message', e, event.data.slice(0, 100));
@@ -126,7 +139,7 @@ export function useGeminiSocket(
                         if (packetCount % 50 === 0) console.warn('[useGeminiSocket] WS not OPEN, cannot send audio');
                     }
                 }, () => {
-                    if (audioStreamer.current.isPlaying) {
+                    if (assistantSpeaking.current) {
                         const now = Date.now();
                         if (now - lastInterruptAt.current > 800) {
                             lastInterruptAt.current = now;
@@ -176,6 +189,11 @@ export function useGeminiSocket(
         }
         // Stop Audio
         audioRecorder.current.stop();
+
+        if (silenceTimer.current) {
+            clearTimeout(silenceTimer.current);
+            silenceTimer.current = null;
+        }
 
         // Clear Interval
         if (intervalRef.current) {

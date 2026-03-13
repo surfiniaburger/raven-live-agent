@@ -11,6 +11,7 @@ from typing import Any, Callable
 
 import httpx
 import websockets
+from websockets.connection import State as WsState
 from websockets.exceptions import ConnectionClosed
 from google import genai
 from google.genai import types
@@ -24,7 +25,7 @@ try:
         RealtimeAudioOptions,
         RealtimeEvents,
     )
-except Exception:  # noqa: BLE001
+except ImportError:  # noqa: BLE001
     ElevenLabs = None  # type: ignore
 
 from app.tools.grounding_tools import fetch_weather_context, search_sop_guidance
@@ -228,11 +229,22 @@ class ElevenFallbackEngine:
         resp.raise_for_status()
         return resp.content
 
+    def _tts_ws_open(self) -> bool:
+        """Cross-version helper: True if the persistent TTS WebSocket is connected."""
+        ws = self._tts_ws
+        if ws is None:
+            return False
+        try:
+            return ws.state == WsState.OPEN
+        except AttributeError:
+            # Fallback for older websockets that had .open / .closed attributes
+            return getattr(ws, 'open', not getattr(ws, 'closed', True))
+
     async def _ensure_tts_ws(self):
-        if self._tts_ws and not self._tts_ws.closed:
+        if self._tts_ws_open():
             return self._tts_ws
         async with self._tts_lock:
-            if self._tts_ws and not self._tts_ws.closed:
+            if self._tts_ws_open():
                 return self._tts_ws
             if not self.config.eleven_api_key:
                 raise RuntimeError("ELEVENLABS_API_KEY is missing")
@@ -250,7 +262,7 @@ class ElevenFallbackEngine:
             return self._tts_ws
 
     async def _close_tts_context(self, context_id: str) -> None:
-        if not self._tts_ws or self._tts_ws.closed:
+        if not self._tts_ws_open():
             return
         try:
             await self._tts_ws.send(
