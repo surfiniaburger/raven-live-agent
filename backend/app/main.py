@@ -45,6 +45,7 @@ FALLBACK_TRIGGER_SUBSTRINGS = {
     "transporterror",
     "ssl",
 }
+FATAL_MODEL_ERROR_CODES = {"SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "MAX_TOKENS", "CANCELLED"}
 
 app = FastAPI(title="RAVEN Live Agent")
 app.add_middleware(
@@ -322,7 +323,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, session_id: str
                 if event.error_code:
                     logger.error("Live model error: %s - %s", event.error_code, event.error_message)
                     await send_system_warning("MODEL_ERROR", f"{event.error_code}: {event.error_message}")
-                    if event.error_code in {"SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "MAX_TOKENS", "CANCELLED"}:
+                    if event.error_code in FATAL_MODEL_ERROR_CODES:
                         break
                     continue
                 await websocket.send_text(event.model_dump_json(exclude_none=True, by_alias=True))

@@ -2,6 +2,9 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { AudioStreamer } from './audioStreamer';
 import { AudioRecorder } from './audioRecorder';
 
+const SILENCE_DETECTION_MS = 700;
+
+
 export function useGeminiSocket(
     url,
     { enableInterrupt = true, enableBargeIn = false } = {}
@@ -70,9 +73,8 @@ export function useGeminiSocket(
                             lastAudioAt.current = Date.now();
                             if (silenceTimer.current) clearTimeout(silenceTimer.current);
                             silenceTimer.current = setTimeout(() => {
-                                const age = Date.now() - lastAudioAt.current;
-                                if (age >= 700) assistantSpeaking.current = false;
-                            }, 750);
+                                assistantSpeaking.current = false;
+                            }, SILENCE_DETECTION_MS);
                         }
                     });
                 }
