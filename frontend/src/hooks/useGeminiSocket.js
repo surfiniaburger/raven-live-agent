@@ -2,12 +2,16 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { AudioStreamer } from './audioStreamer';
 import { AudioRecorder } from './audioRecorder';
 
-export function useGeminiSocket(url) {
+export function useGeminiSocket(
+    url,
+    { enableInterrupt = true, enableBargeIn = false } = {}
+) {
     const [status, setStatus] = useState('DISCONNECTED');
     const [lastMessage, setLastMessage] = useState(null);
     const ws = useRef(null);
     const streamRef = useRef(null);
     const intervalRef = useRef(null);
+    const lastInterruptAt = useRef(0);
     const audioStreamer = useRef(new AudioStreamer(24000)); // Default to 24kHz for Gemini Live
     const audioRecorder = useRef(new AudioRecorder(16000)); // Record at 16kHz for Gemini Input
 
@@ -57,16 +61,46 @@ export function useGeminiSocket(url) {
 
                         // Handle Audio (The AI's voice)
                         if (part.inlineData && part.inlineData.data) {
+                            console.log('[useGeminiSocket] inline audio chunk', part.inlineData.data.length);
                             audioStreamer.current.resume();
                             audioStreamer.current.addPCM16(part.inlineData.data);
                         }
                     });
+                }
+                
+                // Handle interruption and turn boundaries
+                if (msg.interrupted) {
+                    console.warn('[useGeminiSocket] Interrupted event received');
+                    audioStreamer.current.stop();
+                } else if (msg.turnComplete) {
+                    console.log('[useGeminiSocket] Turn complete');
+                    audioStreamer.current.stop();
                 }
             } catch (e) {
                 console.error('Failed to parse message', e, event.data.slice(0, 100));
             }
         };
     }, [url]);
+
+    const sendInterrupt = useCallback(() => {
+        if (!enableInterrupt) return;
+        if (ws.current?.readyState === WebSocket.OPEN) {
+            console.warn('[useGeminiSocket] Sending interrupt');
+            ws.current.send(JSON.stringify({ type: 'interrupt' }));
+        } else {
+            console.warn('[useGeminiSocket] Interrupt skipped; WS not open');
+        }
+    }, [enableInterrupt]);
+
+    const sendBargeIn = useCallback(() => {
+        if (!enableBargeIn) return;
+        if (ws.current?.readyState === WebSocket.OPEN) {
+            console.warn('[useGeminiSocket] Sending barge_in');
+            ws.current.send(JSON.stringify({ type: 'barge_in' }));
+        } else {
+            console.warn('[useGeminiSocket] Barge-in skipped; WS not open');
+        }
+    }, [enableBargeIn]);
 
     const startStream = useCallback(async (videoElement) => {
         try {
@@ -90,6 +124,18 @@ export function useGeminiSocket(url) {
                         }));
                     } else {
                         if (packetCount % 50 === 0) console.warn('[useGeminiSocket] WS not OPEN, cannot send audio');
+                    }
+                }, () => {
+                    if (audioStreamer.current.isPlaying) {
+                        const now = Date.now();
+                        if (now - lastInterruptAt.current > 800) {
+                            lastInterruptAt.current = now;
+                            if (enableInterrupt) {
+                                sendInterrupt();
+                            } else if (enableBargeIn) {
+                                sendBargeIn();
+                            }
+                        }
                     }
                 });
                 console.log("Microphone recording started");

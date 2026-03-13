@@ -119,7 +119,7 @@ For device/Capacitor testing, set explicit websocket base:
 VITE_WS_BASE_URL=ws://<LAN_OR_PUBLIC_HOST>:8000 npm run dev
 ```
 
-## 3. Android (Jetpack Compose)
+## 3. Android 
 
 Android client lives in:
 
@@ -189,6 +189,15 @@ This reports:
 - mode distribution (`grounded_answer_ok`, `answer_with_caution`, `ask_clarifying_or_abstain`, etc.)
 
 If Vector Search is not yet provisioned, retrieval tools use a local JSONL fallback search so you can still test end-to-end behavior.
+
+## Testing
+
+Run backend unit tests (including ElevenLabs fallback harness):
+
+```bash
+cd /Users/surfiniaburger/Desktop/way-back-home/raven-standalone/backend
+uv run pytest -q
+```
 
 ### Agent grounding behavior
 

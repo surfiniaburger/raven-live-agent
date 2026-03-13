@@ -78,13 +78,18 @@ function dedupeSources(sources) {
 export default function LiveOpsConsole() {
   const videoRef = useRef(null);
   const [events, setEvents] = useState([]);
+  const [mode, setMode] = useState("LIVE");
+  const [systemAlerts, setSystemAlerts] = useState([]);
   const sessionId = useMemo(() => Math.random().toString(36).slice(2), []);
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const configuredWsBase = import.meta.env.VITE_WS_BASE_URL;
   const wsBase = configuredWsBase || `${protocol}//${window.location.host}`;
   const wsUrl = `${wsBase}/ws/ops-user/${sessionId}`;
 
-  const { status, lastMessage, connect, disconnect, startStream, stopStream } = useGeminiSocket(wsUrl);
+  const { status, lastMessage, connect, disconnect, startStream, stopStream } = useGeminiSocket(
+    wsUrl,
+    { enableInterrupt: mode === "LIVE", enableBargeIn: mode === "FALLBACK" }
+  );
 
   const start = async () => {
     connect();
@@ -100,6 +105,20 @@ export default function LiveOpsConsole() {
     const parsed = parseEvents(lastMessage);
     if (!lastMessage || (!parsed.text && parsed.toolCalls.length === 0 && parsed.toolResponses.length === 0)) return;
     setEvents((prev) => [lastMessage, ...prev].slice(0, 15));
+
+    if (parsed.text && parsed.text.includes("[SYSTEM:MODE_SWITCH]")) {
+      const match = parsed.text.match(/mode=([a-zA-Z]+)/);
+      if (match) {
+        setMode(match[1].toUpperCase());
+      }
+    }
+
+    if (parsed.text && parsed.text.includes("[SYSTEM:")) {
+      setSystemAlerts((prev) => {
+        const next = [parsed.text, ...prev].slice(0, 4);
+        return next;
+      });
+    }
   }, [lastMessage]);
 
   const incident = useMemo(() => deriveIncidentState(events), [events]);
@@ -110,10 +129,24 @@ export default function LiveOpsConsole() {
         <header className="command-header">
           <div>
             <p className="eyebrow">Live Operations</p>
-            <h1 className="command-title">RAVEN Emergency Command</h1>
+            <div className="title-row">
+              <h1 className="command-title">RAVEN Emergency Command</h1>
+              <span className={`status-chip status-${mode === "FALLBACK" ? "warn" : "ok"}`}>
+                {mode}
+              </span>
+            </div>
           </div>
           <ConnectionStatusCard status={status} />
         </header>
+        {systemAlerts.length > 0 && (
+          <section className="system-alerts" aria-live="polite">
+            {systemAlerts.map((alert, idx) => (
+              <p key={`${alert}-${idx}`} className="system-alert">
+                {alert.replace("[SYSTEM:", "").replace("]", "")}
+              </p>
+            ))}
+          </section>
+        )}
 
         <div className="camera-stage">
           <video ref={videoRef} muted playsInline className="camera-feed" />
