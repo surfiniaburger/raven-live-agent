@@ -33,7 +33,7 @@ MODEL_ID = os.getenv("MODEL_ID", "gemini-live-2.5-flash-native-audio")
 try:
     from google.adk.skills import load_skill_from_dir
     from google.adk.tools import skill_toolset
-except Exception:
+except ImportError:
     load_skill_from_dir = None
     skill_toolset = None
 

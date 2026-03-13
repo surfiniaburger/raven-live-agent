@@ -10,6 +10,8 @@ export class AudioRecorder {
     }
 
     async start(onAudioData, onVad) {
+        const VAD_RMS_THRESHOLD = 0.02;
+        const VAD_DEBOUNCE_MS = 800;
         this.onAudioData = onAudioData;
         this.onVad = onVad;
 
@@ -56,7 +58,7 @@ export class AudioRecorder {
                     }
                     const rms = Math.sqrt(sum / inputData.length);
                     const now = Date.now();
-                    if (rms > 0.02 && now - lastVadAt > 800) {
+                    if (rms > VAD_RMS_THRESHOLD && now - lastVadAt > VAD_DEBOUNCE_MS) {
                         lastVadAt = now;
                         console.log(`[AudioRecorder] VAD gate triggered (rms=${rms.toFixed(4)})`);
                         this.onVad({ rms });

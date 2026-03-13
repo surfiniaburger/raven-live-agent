@@ -25,6 +25,7 @@ except ModuleNotFoundError:
     from fallback.eleven_fallback import ElevenFallbackEngine, build_fallback_config
 
 _dotenv_path = Path(__file__).resolve().parents[1] / ".env"
+# Load repo .env first, then allow local overrides from CWD .env.
 load_dotenv(dotenv_path=_dotenv_path, override=True)
 load_dotenv(override=True)
 
@@ -35,6 +36,15 @@ warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
 
 PORT = 8080
 APP_NAME = "raven-live-agent"
+FALLBACK_TRIGGER_SUBSTRINGS = {
+    "1008",
+    "policy violation",
+    "timed out during opening handshake",
+    "timeout",
+    "oauth2.googleapis.com",
+    "transporterror",
+    "ssl",
+}
 
 app = FastAPI(title="RAVEN Live Agent")
 app.add_middleware(
@@ -118,6 +128,9 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, session_id: str
 
     async def send_interrupt() -> None:
         await websocket.send_text(json.dumps({"interrupted": True}))
+
+    async def send_turn_complete() -> None:
+        await websocket.send_text(json.dumps({"turnComplete": True}))
 
     async def send_fallback_response(text: str, audio_bytes: bytes | None) -> None:
         parts = [{"text": text}]
@@ -253,6 +266,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, session_id: str
                                     await send_fallback_audio_chunk(chunk)
                             finally:
                                 fallback_audio_active["active"] = False
+                                await send_turn_complete()
                         fallback_audio_task = asyncio.create_task(stream_audio())
                         fallback_audio_active["active"] = True
                     else:
@@ -305,6 +319,12 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, session_id: str
                 live_request_queue=live_request_queue,
                 run_config=run_config,
             ):
+                if event.error_code:
+                    logger.error("Live model error: %s - %s", event.error_code, event.error_message)
+                    await send_system_warning("MODEL_ERROR", f"{event.error_code}: {event.error_message}")
+                    if event.error_code in {"SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "MAX_TOKENS", "CANCELLED"}:
+                        break
+                    continue
                 await websocket.send_text(event.model_dump_json(exclude_none=True, by_alias=True))
         except WebSocketDisconnect:
             return
@@ -326,6 +346,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, session_id: str
                         await send_fallback_audio_chunk(chunk)
                 finally:
                     fallback_audio_active["active"] = False
+                    await send_turn_complete()
             if fallback_audio_task and not fallback_audio_task.done():
                 fallback_audio_task.cancel()
             fallback_audio_task = asyncio.create_task(stream_audio())
@@ -346,15 +367,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, session_id: str
             exc = downstream.exception()
             logger.error("Socket failure: %s", exc)
             error_text = str(exc).lower()
-            fallback_trigger = (
-                "1008" in error_text
-                or "policy violation" in error_text
-                or "timed out during opening handshake" in error_text
-                or "timeout" in error_text
-                or "oauth2.googleapis.com" in error_text
-                or "transporterror" in error_text
-                or "ssl" in error_text
-            )
+            fallback_trigger = any(fragment in error_text for fragment in FALLBACK_TRIGGER_SUBSTRINGS)
             if fallback_trigger:
                 mode_state["mode"] = "fallback"
                 reason = "live_model_policy_1008" if "1008" in error_text or "policy violation" in error_text else "live_model_handshake_timeout"
@@ -374,6 +387,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, session_id: str
                         logger.info("Fallback engine started.")
                         fallback_task = asyncio.create_task(fallback_loop())
                     except Exception as fallback_exc:  # noqa: BLE001
+                        logger.exception("Fallback init failed")
                         await send_system_warning(
                             "FALLBACK_INIT_FAILED",
                             f"Fallback init failed: {fallback_exc}",

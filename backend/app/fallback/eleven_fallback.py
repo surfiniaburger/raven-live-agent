@@ -22,7 +22,7 @@ try:
         RealtimeEvents,
         VoiceSettings,
     )
-except Exception:  # noqa: BLE001
+except ImportError:  # noqa: BLE001
     ElevenLabs = None  # type: ignore
 
 from app.tools.grounding_tools import fetch_weather_context, search_sop_guidance
@@ -129,8 +129,8 @@ class ElevenFallbackEngine:
                 try:
                     await self.start()
                     return
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("ElevenLabs STT reconnect failed: %s", exc)
+                except Exception:  # noqa: BLE001
+                    logger.exception("ElevenLabs STT reconnect failed")
                     await asyncio.sleep(backoff)
                     backoff = min(backoff * 2, 8.0)
 
@@ -195,8 +195,8 @@ class ElevenFallbackEngine:
             output = (response.text or "").strip()
             self._last_assistant_text = output
             return output
-        except Exception as exc:  # noqa: BLE001
-            logger.error("Fallback model error: %s", exc)
+        except Exception:  # noqa: BLE001
+            logger.exception("Fallback model error")
             return "Fallback model error. Please try again or switch to text input."
 
     async def synthesize_tts(self, text: str) -> bytes:
