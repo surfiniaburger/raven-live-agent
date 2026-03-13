@@ -123,7 +123,7 @@ class ElevenFallbackEngine:
         if self._tts_ws:
             try:
                 await self._tts_ws.close()
-            except Exception:  # noqa: BLE001
+            except websockets.exceptions.WebSocketException:
                 pass
             self._tts_ws = None
         await self._http.aclose()
@@ -273,7 +273,7 @@ class ElevenFallbackEngine:
                     }
                 )
             )
-        except Exception as exc:  # noqa: BLE001
+        except websockets.exceptions.WebSocketException as exc:
             logger.warning("Failed to close ElevenLabs TTS context: %s", exc)
 
     async def stream_tts(self, text: str):
@@ -293,11 +293,11 @@ class ElevenFallbackEngine:
                 if isinstance(raw, bytes):
                     try:
                         raw = raw.decode("utf-8")
-                    except Exception:  # noqa: BLE001
+                    except UnicodeDecodeError:
                         continue
                 try:
                     data = json.loads(raw)
-                except Exception:  # noqa: BLE001
+                except json.JSONDecodeError:
                     continue
                 ctx = data.get("contextId") or data.get("context_id")
                 if ctx and ctx != context_id:
@@ -309,7 +309,7 @@ class ElevenFallbackEngine:
                 if audio_b64:
                     try:
                         chunk = base64.b64decode(audio_b64)
-                    except Exception:  # noqa: BLE001
+                    except (TypeError, base64.binascii.Error):
                         chunk = b""
                     if chunk:
                         pending += chunk
