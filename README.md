@@ -119,7 +119,7 @@ For device/Capacitor testing, set explicit websocket base:
 VITE_WS_BASE_URL=ws://<LAN_OR_PUBLIC_HOST>:8000 npm run dev
 ```
 
-## 3. Android (Jetpack Compose)
+## 3. Android 
 
 Android client lives in:
 

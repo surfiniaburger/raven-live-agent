@@ -2,12 +2,13 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { AudioStreamer } from './audioStreamer';
 import { AudioRecorder } from './audioRecorder';
 
-export function useGeminiSocket(url) {
+export function useGeminiSocket(url, { enableInterrupt = true } = {}) {
     const [status, setStatus] = useState('DISCONNECTED');
     const [lastMessage, setLastMessage] = useState(null);
     const ws = useRef(null);
     const streamRef = useRef(null);
     const intervalRef = useRef(null);
+    const lastInterruptAt = useRef(0);
     const audioStreamer = useRef(new AudioStreamer(24000)); // Default to 24kHz for Gemini Live
     const audioRecorder = useRef(new AudioRecorder(16000)); // Record at 16kHz for Gemini Input
 
@@ -64,14 +65,28 @@ export function useGeminiSocket(url) {
                 }
                 
                 // Handle interruption and turn boundaries
-                if (msg.interrupted || msg.turnComplete) {
-                   audioStreamer.current.stop();
+                if (msg.interrupted) {
+                    console.warn('[useGeminiSocket] Interrupted event received');
+                    audioStreamer.current.stop();
+                } else if (msg.turnComplete) {
+                    console.log('[useGeminiSocket] Turn complete');
+                    audioStreamer.current.stop();
                 }
             } catch (e) {
                 console.error('Failed to parse message', e, event.data.slice(0, 100));
             }
         };
     }, [url]);
+
+    const sendInterrupt = useCallback(() => {
+        if (!enableInterrupt) return;
+        if (ws.current?.readyState === WebSocket.OPEN) {
+            console.warn('[useGeminiSocket] Sending interrupt');
+            ws.current.send(JSON.stringify({ type: 'interrupt' }));
+        } else {
+            console.warn('[useGeminiSocket] Interrupt skipped; WS not open');
+        }
+    }, [enableInterrupt]);
 
     const startStream = useCallback(async (videoElement) => {
         try {
@@ -86,6 +101,11 @@ export function useGeminiSocket(url) {
                 let packetCount = 0;
                 await audioRecorder.current.start((base64Audio) => {
                     if (ws.current?.readyState === WebSocket.OPEN) {
+                        const now = Date.now();
+                        if (audioStreamer.current.isPlaying && now - lastInterruptAt.current > 700) {
+                            lastInterruptAt.current = now;
+                            sendInterrupt();
+                        }
                         packetCount++;
                         if (packetCount % 50 === 0) console.log(`[useGeminiSocket] Sending Audio Packet #${packetCount}, size: ${base64Audio.length}`);
                         ws.current.send(JSON.stringify({

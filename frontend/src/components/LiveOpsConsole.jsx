@@ -86,7 +86,10 @@ export default function LiveOpsConsole() {
   const wsBase = configuredWsBase || `${protocol}//${window.location.host}`;
   const wsUrl = `${wsBase}/ws/ops-user/${sessionId}`;
 
-  const { status, lastMessage, connect, disconnect, startStream, stopStream } = useGeminiSocket(wsUrl);
+  const { status, lastMessage, connect, disconnect, startStream, stopStream } = useGeminiSocket(
+    wsUrl,
+    { enableInterrupt: mode === "LIVE" }
+  );
 
   const start = async () => {
     connect();

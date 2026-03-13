@@ -41,11 +41,11 @@ skill_tools = []
 if load_skill_from_dir and skill_toolset:
     skills_dir = pathlib.Path(__file__).resolve().parents[2] / "skills"
     skill_names = [
-        "weather_risk_skill",
-        "hazard_detection_skill",
-        "sop_guidance_skill",
-        "incident_knowledge_skill",
-        "incident_brief_skill",
+        "weather-risk-skill",
+        "hazard-detection-skill",
+        "sop-guidance-skill",
+        "incident-knowledge-skill",
+        "incident-brief-skill",
     ]
     skills = []
     for skill_name in skill_names:

@@ -52,6 +52,9 @@ class ElevenFallbackEngine:
         self._last_image_bytes: bytes | None = None
         self._last_image_mime: str | None = None
         self._last_image_ts: float | None = None
+        self._stt_reconnect_task: asyncio.Task | None = None
+        self._stt_reconnect_lock = asyncio.Lock()
+        self._last_stt_close_log: float = 0.0
 
     @property
     def ready(self) -> bool:
@@ -60,6 +63,12 @@ class ElevenFallbackEngine:
     async def start(self) -> None:
         if not self._client:
             raise RuntimeError("elevenlabs sdk not installed")
+        if self._stt_conn:
+            try:
+                await self._stt_conn.close()
+            except Exception:  # noqa: BLE001
+                pass
+        self._stt_ready.clear()
         loop = asyncio.get_running_loop()
         self._stt_conn = await self._client.speech_to_text.realtime.connect(
             RealtimeAudioOptions(
@@ -88,7 +97,8 @@ class ElevenFallbackEngine:
 
         def on_error(err: Any) -> None:
             logger.error("ElevenLabs STT error: %s", err)
-            self._stt_ready.set()
+            self._stt_ready.clear()
+            self._schedule_reconnect()
 
         self._stt_conn.on(RealtimeEvents.SESSION_STARTED, on_session_started)
         self._stt_conn.on(RealtimeEvents.COMMITTED_TRANSCRIPT, on_committed_transcript)
@@ -100,13 +110,36 @@ class ElevenFallbackEngine:
             raise RuntimeError("ElevenLabs STT session did not start in time") from exc
 
     async def close(self) -> None:
+        if self._stt_reconnect_task and not self._stt_reconnect_task.done():
+            self._stt_reconnect_task.cancel()
         if self._stt_conn:
             await self._stt_conn.close()
         await self._http.aclose()
 
+    def _schedule_reconnect(self) -> None:
+        if self._stt_reconnect_task and not self._stt_reconnect_task.done():
+            return
+        self._stt_reconnect_task = asyncio.create_task(self._reconnect_stt())
+
+    async def _reconnect_stt(self) -> None:
+        async with self._stt_reconnect_lock:
+            backoff = 0.5
+            while True:
+                try:
+                    await self.start()
+                    return
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("ElevenLabs STT reconnect failed: %s", exc)
+                    await asyncio.sleep(backoff)
+                    backoff = min(backoff * 2, 8.0)
+
     async def send_audio(self, pcm16: bytes) -> None:
-        if not self._stt_conn:
-            logger.warning("ElevenLabs STT not connected; dropping audio.")
+        if not self._stt_conn or not self._stt_ready.is_set():
+            now = time.time()
+            if now - self._last_stt_close_log > 5:
+                logger.warning("ElevenLabs STT not connected; dropping audio.")
+                self._last_stt_close_log = now
+            self._schedule_reconnect()
             return
         payload: dict[str, Any] = {
             "audio_base_64": base64.b64encode(pcm16).decode("utf-8"),
@@ -115,7 +148,12 @@ class ElevenFallbackEngine:
         try:
             await self._stt_conn.send(payload)
         except ConnectionClosed as exc:
-            logger.warning("ElevenLabs STT websocket closed: %s", exc)
+            self._stt_ready.clear()
+            now = time.time()
+            if now - self._last_stt_close_log > 5:
+                logger.warning("ElevenLabs STT websocket closed: %s", exc)
+                self._last_stt_close_log = now
+            self._schedule_reconnect()
 
     def set_latest_image(self, image_bytes: bytes, mime_type: str) -> None:
         self._last_image_bytes = image_bytes

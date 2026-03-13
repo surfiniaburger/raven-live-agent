@@ -116,6 +116,9 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, session_id: str
         }
         await websocket.send_text(json.dumps(payload))
 
+    async def send_interrupt() -> None:
+        await websocket.send_text(json.dumps({"interrupted": True}))
+
     async def send_fallback_response(text: str, audio_bytes: bytes | None) -> None:
         parts = [{"text": text}]
         if audio_bytes:
@@ -137,6 +140,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, session_id: str
         await websocket.send_text(json.dumps(payload))
 
     mode_state = {"mode": "live"}
+    interrupt_state = {"active": False}
     fallback_engine: ElevenFallbackEngine | None = None
     fallback_task: asyncio.Task | None = None
 
@@ -172,8 +176,15 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, session_id: str
                     continue
 
                 msg_type = payload.get("type")
-                if msg_type not in {"text", "audio", "image"}:
+                if msg_type not in {"text", "audio", "image", "interrupt"}:
                     await send_system_warning("BAD_TYPE", f"Ignoring unsupported message type: {msg_type}")
+                    continue
+
+                if payload.get("type") == "interrupt":
+                    if mode_state["mode"] == "fallback":
+                        continue
+                    interrupt_state["active"] = True
+                    await send_interrupt()
                     continue
 
                 if payload.get("type") == "text":
@@ -249,6 +260,9 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, session_id: str
             await send_system_warning("STT_COMMIT", transcript)
             response_text = await fallback_engine.generate_response(transcript)
             audio = await fallback_engine.synthesize_tts(response_text)
+            if interrupt_state["active"]:
+                interrupt_state["active"] = False
+                continue
             await send_fallback_response(response_text, audio)
 
     upstream = asyncio.create_task(upstream_task())

@@ -6,6 +6,7 @@ export class AudioStreamer {
         this.audioQueue = [];
         this.isPlaying = false;
         this.sampleRate = sampleRate;
+        this.currentSource = null;
     }
 
     addPCM16(base64Data) {
@@ -67,10 +68,12 @@ export class AudioStreamer {
             buffer.getChannelData(0).set(audioData);
 
             const source = this.context.createBufferSource();
+            this.currentSource = source;
             source.buffer = buffer;
             source.connect(this.context.destination);
             source.onended = () => {
                 this.isPlaying = false;
+                this.currentSource = null;
                 this.playNext();
             };
             source.start();
@@ -90,6 +93,14 @@ export class AudioStreamer {
 
     stop() {
         this.audioQueue = [];
+        if (this.currentSource) {
+            try {
+                this.currentSource.stop();
+            } catch (e) {
+                console.warn('[AudioStreamer] Failed to stop current source:', e);
+            }
+            this.currentSource = null;
+        }
         this.isPlaying = false;
         console.log('[AudioStreamer] Playback stopped. Buffer cleared.');
     }
