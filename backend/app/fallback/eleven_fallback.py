@@ -20,6 +20,7 @@ try:
         ElevenLabs,
         RealtimeAudioOptions,
         RealtimeEvents,
+        VoiceSettings,
     )
 except Exception:  # noqa: BLE001
     ElevenLabs = None  # type: ignore
@@ -216,6 +217,45 @@ class ElevenFallbackEngine:
         resp = await self._http.post(url, headers=headers, json=payload)
         resp.raise_for_status()
         return resp.content
+
+    async def stream_tts(self, text: str):
+        if not self._client:
+            raise RuntimeError("elevenlabs sdk not installed")
+        iterator = self._client.text_to_speech.stream(
+            voice_id=self.config.eleven_voice_id,
+            text=text,
+            model_id=self.config.eleven_tts_model,
+            output_format=self.config.tts_output_format,
+            voice_settings=VoiceSettings(stability=0.3, similarity_boost=0.7),
+            optimize_streaming_latency=2,
+        )
+        pending = b""
+        def _next_chunk(it):
+            try:
+                return next(it)
+            except StopIteration:
+                return None
+
+        while True:
+            chunk = await asyncio.to_thread(_next_chunk, iterator)
+            if chunk is None:
+                break
+            if not chunk:
+                continue
+            pending += chunk
+            if len(pending) < 2:
+                continue
+            # Ensure 16-bit alignment for PCM playback.
+            aligned_len = len(pending) - (len(pending) % 2)
+            if aligned_len <= 0:
+                continue
+            emit, pending = pending[:aligned_len], pending[aligned_len:]
+            yield emit
+        if pending:
+            # Drop final odd byte if present.
+            aligned_len = len(pending) - (len(pending) % 2)
+            if aligned_len:
+                yield pending[:aligned_len]
 
     def _run_fallback_tools(self, text: str) -> str:
         lower = text.lower()

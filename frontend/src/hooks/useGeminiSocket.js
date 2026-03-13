@@ -2,7 +2,10 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { AudioStreamer } from './audioStreamer';
 import { AudioRecorder } from './audioRecorder';
 
-export function useGeminiSocket(url, { enableInterrupt = true } = {}) {
+export function useGeminiSocket(
+    url,
+    { enableInterrupt = true, enableBargeIn = false } = {}
+) {
     const [status, setStatus] = useState('DISCONNECTED');
     const [lastMessage, setLastMessage] = useState(null);
     const ws = useRef(null);
@@ -58,6 +61,7 @@ export function useGeminiSocket(url, { enableInterrupt = true } = {}) {
 
                         // Handle Audio (The AI's voice)
                         if (part.inlineData && part.inlineData.data) {
+                            console.log('[useGeminiSocket] inline audio chunk', part.inlineData.data.length);
                             audioStreamer.current.resume();
                             audioStreamer.current.addPCM16(part.inlineData.data);
                         }
@@ -88,6 +92,16 @@ export function useGeminiSocket(url, { enableInterrupt = true } = {}) {
         }
     }, [enableInterrupt]);
 
+    const sendBargeIn = useCallback(() => {
+        if (!enableBargeIn) return;
+        if (ws.current?.readyState === WebSocket.OPEN) {
+            console.warn('[useGeminiSocket] Sending barge_in');
+            ws.current.send(JSON.stringify({ type: 'barge_in' }));
+        } else {
+            console.warn('[useGeminiSocket] Barge-in skipped; WS not open');
+        }
+    }, [enableBargeIn]);
+
     const startStream = useCallback(async (videoElement) => {
         try {
             // 1. Start Video Stream
@@ -101,11 +115,6 @@ export function useGeminiSocket(url, { enableInterrupt = true } = {}) {
                 let packetCount = 0;
                 await audioRecorder.current.start((base64Audio) => {
                     if (ws.current?.readyState === WebSocket.OPEN) {
-                        const now = Date.now();
-                        if (audioStreamer.current.isPlaying && now - lastInterruptAt.current > 700) {
-                            lastInterruptAt.current = now;
-                            sendInterrupt();
-                        }
                         packetCount++;
                         if (packetCount % 50 === 0) console.log(`[useGeminiSocket] Sending Audio Packet #${packetCount}, size: ${base64Audio.length}`);
                         ws.current.send(JSON.stringify({
@@ -115,6 +124,18 @@ export function useGeminiSocket(url, { enableInterrupt = true } = {}) {
                         }));
                     } else {
                         if (packetCount % 50 === 0) console.warn('[useGeminiSocket] WS not OPEN, cannot send audio');
+                    }
+                }, () => {
+                    if (audioStreamer.current.isPlaying) {
+                        const now = Date.now();
+                        if (now - lastInterruptAt.current > 800) {
+                            lastInterruptAt.current = now;
+                            if (enableInterrupt) {
+                                sendInterrupt();
+                            } else if (enableBargeIn) {
+                                sendBargeIn();
+                            }
+                        }
                     }
                 });
                 console.log("Microphone recording started");

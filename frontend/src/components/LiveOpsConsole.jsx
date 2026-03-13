@@ -88,7 +88,7 @@ export default function LiveOpsConsole() {
 
   const { status, lastMessage, connect, disconnect, startStream, stopStream } = useGeminiSocket(
     wsUrl,
-    { enableInterrupt: mode === "LIVE" }
+    { enableInterrupt: mode === "LIVE", enableBargeIn: mode === "FALLBACK" }
   );
 
   const start = async () => {

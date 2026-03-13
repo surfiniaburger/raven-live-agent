@@ -139,12 +139,58 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, session_id: str
         }
         await websocket.send_text(json.dumps(payload))
 
+    async def send_fallback_text(text: str) -> None:
+        payload = {
+            "serverContent": {
+                "modelTurn": {
+                    "parts": [{"text": text}],
+                }
+            }
+        }
+        await websocket.send_text(json.dumps(payload))
+
+    async def send_fallback_audio_chunk(audio_bytes: bytes) -> None:
+        logger.info("Fallback TTS chunk: bytes=%d", len(audio_bytes))
+        payload = {
+            "serverContent": {
+                "modelTurn": {
+                    "parts": [
+                        {
+                            "inlineData": {
+                                "mimeType": "audio/pcm;rate=24000",
+                                "data": base64.b64encode(audio_bytes).decode("utf-8"),
+                            }
+                        }
+                    ]
+                }
+            }
+        }
+        await websocket.send_text(json.dumps(payload))
+
     mode_state = {"mode": "live"}
     interrupt_state = {"active": False}
     fallback_engine: ElevenFallbackEngine | None = None
     fallback_task: asyncio.Task | None = None
+    fallback_audio_task: asyncio.Task | None = None
+    fallback_audio_active = {"active": False}
+    fallback_last_barge = {"ts": 0.0}
+
+    async def cancel_fallback_audio(reason: str = "user_barge_in") -> None:
+        nonlocal fallback_audio_task
+        if not fallback_audio_active["active"]:
+            return
+        now = asyncio.get_running_loop().time()
+        if now - fallback_last_barge["ts"] < 0.8:
+            return
+        fallback_last_barge["ts"] = now
+        logger.info("Fallback barge-in: canceling TTS stream (%s).", reason)
+        if fallback_audio_task and not fallback_audio_task.done():
+            fallback_audio_task.cancel()
+        fallback_audio_active["active"] = False
+        await send_interrupt()
 
     async def upstream_task() -> None:
+        nonlocal fallback_audio_task
         while True:
             try:
                 message = await websocket.receive()
@@ -176,7 +222,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, session_id: str
                     continue
 
                 msg_type = payload.get("type")
-                if msg_type not in {"text", "audio", "image", "interrupt"}:
+                if msg_type not in {"text", "audio", "image", "interrupt", "barge_in"}:
                     await send_system_warning("BAD_TYPE", f"Ignoring unsupported message type: {msg_type}")
                     continue
 
@@ -186,16 +232,29 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, session_id: str
                     interrupt_state["active"] = True
                     await send_interrupt()
                     continue
+                if payload.get("type") == "barge_in":
+                    if mode_state["mode"] == "fallback":
+                        await cancel_fallback_audio()
+                    continue
 
                 if payload.get("type") == "text":
                     text_value = payload.get("text", "")
                     if not isinstance(text_value, str):
                         await send_system_warning("BAD_TEXT", "Expected string at payload.text.")
                         continue
+                    if mode_state["mode"] == "fallback":
+                        await cancel_fallback_audio()
                     if mode_state["mode"] == "fallback" and fallback_engine:
                         response_text = await fallback_engine.generate_response(text_value)
-                        audio = await fallback_engine.synthesize_tts(response_text)
-                        await send_fallback_response(response_text, audio)
+                        await send_fallback_text(response_text)
+                        async def stream_audio() -> None:
+                            try:
+                                async for chunk in fallback_engine.stream_tts(response_text):
+                                    await send_fallback_audio_chunk(chunk)
+                            finally:
+                                fallback_audio_active["active"] = False
+                        fallback_audio_task = asyncio.create_task(stream_audio())
+                        fallback_audio_active["active"] = True
                     else:
                         live_request_queue.send_content(types.Content(parts=[types.Part(text=text_value)]))
                 elif payload.get("type") == "audio":
@@ -252,6 +311,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, session_id: str
 
     async def fallback_loop() -> None:
         assert fallback_engine is not None
+        nonlocal fallback_audio_task
         while True:
             transcript = await fallback_engine.next_transcript()
             if not transcript:
@@ -259,11 +319,21 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, session_id: str
             logger.info("Fallback STT commit: %s", transcript[:200])
             await send_system_warning("STT_COMMIT", transcript)
             response_text = await fallback_engine.generate_response(transcript)
-            audio = await fallback_engine.synthesize_tts(response_text)
+            await send_fallback_text(response_text)
+            async def stream_audio() -> None:
+                try:
+                    async for chunk in fallback_engine.stream_tts(response_text):
+                        await send_fallback_audio_chunk(chunk)
+                finally:
+                    fallback_audio_active["active"] = False
+            if fallback_audio_task and not fallback_audio_task.done():
+                fallback_audio_task.cancel()
+            fallback_audio_task = asyncio.create_task(stream_audio())
+            fallback_audio_active["active"] = True
             if interrupt_state["active"]:
                 interrupt_state["active"] = False
                 continue
-            await send_fallback_response(response_text, audio)
+            # Legacy non-streaming path is no longer used.
 
     upstream = asyncio.create_task(upstream_task())
     downstream = asyncio.create_task(downstream_task())

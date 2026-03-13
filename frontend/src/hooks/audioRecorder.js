@@ -9,8 +9,9 @@ export class AudioRecorder {
         this.onAudioData = null;
     }
 
-    async start(onAudioData) {
+    async start(onAudioData, onVad) {
         this.onAudioData = onAudioData;
+        this.onVad = onVad;
 
         try {
             console.log("[AudioRecorder] Requesting microphone access...");
@@ -43,9 +44,24 @@ export class AudioRecorder {
             this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
             console.log("[AudioRecorder] Processor created.");
 
+            let lastVadAt = 0;
             this.processor.onaudioprocess = (e) => {
                 // console.log("[AudioRecorder] Process fired"); // Too noisy
                 const inputData = e.inputBuffer.getChannelData(0);
+                if (this.onVad) {
+                    let sum = 0;
+                    for (let i = 0; i < inputData.length; i++) {
+                        const v = inputData[i];
+                        sum += v * v;
+                    }
+                    const rms = Math.sqrt(sum / inputData.length);
+                    const now = Date.now();
+                    if (rms > 0.02 && now - lastVadAt > 800) {
+                        lastVadAt = now;
+                        console.log(`[AudioRecorder] VAD gate triggered (rms=${rms.toFixed(4)})`);
+                        this.onVad({ rms });
+                    }
+                }
                 // Convert Float32 (-1.0 to 1.0) to Int16 (-32768 to 32767)
                 const pcm16 = this.floatTo16BitPCM(inputData);
 
