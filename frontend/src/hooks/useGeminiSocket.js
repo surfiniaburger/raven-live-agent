@@ -38,6 +38,37 @@ export function useGeminiSocket(url, { enableInterrupt = true } = {}) {
                 const msg = JSON.parse(event.data);
                 setLastMessage(msg);
 
+                // Handle documented client events (when present)
+                if (msg.type) {
+                    if (msg.type === 'ping' && ws.current?.readyState === WebSocket.OPEN) {
+                        ws.current.send(JSON.stringify({ type: 'pong' }));
+                    }
+                    if (msg.type === 'audio' && msg.audio_event?.audio_base_64) {
+                        audioStreamer.current.resume();
+                        audioStreamer.current.addPCM16(msg.audio_event.audio_base_64);
+                    }
+                    if (msg.type === 'user_transcript' && msg.user_transcription_event?.user_transcript) {
+                        setLastMessage({
+                            content: { parts: [{ text: `[SYSTEM:USER_TRANSCRIPT] ${msg.user_transcription_event.user_transcript}` }] }
+                        });
+                    }
+                    if (msg.type === 'agent_response' && msg.agent_response_event?.agent_response) {
+                        setLastMessage({
+                            content: { parts: [{ text: msg.agent_response_event.agent_response }] }
+                        });
+                    }
+                    if (msg.type === 'agent_response_correction' && msg.agent_response_correction_event?.corrected_agent_response) {
+                        setLastMessage({
+                            content: { parts: [{ text: msg.agent_response_correction_event.corrected_agent_response }] }
+                        });
+                        audioStreamer.current.stop();
+                    }
+                    if (msg.type === 'vad_score' && msg.vad_score_event?.vad_score !== undefined) {
+                        // Optional: VAD score could be surfaced in UI later.
+                        console.debug('[useGeminiSocket] VAD score', msg.vad_score_event.vad_score);
+                    }
+                }
+
                 // Helper to extract parts from various possible event structures
                 let parts = [];
                 if (msg.serverContent?.modelTurn?.parts) {
