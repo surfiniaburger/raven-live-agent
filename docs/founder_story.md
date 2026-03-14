@@ -1,6 +1,6 @@
 # Founder Story and Problem Narrative
 
-I was traveling from Ekiti State to Lagos State after my brother's wedding introduction when we hit a violent storm. In the middle of that storm, a major highway incident unfolded: a large trailer, a nine-seater bus, and several cars were involved in a cascading collision. The bus was trapped under the trailer, another vehicle had gone off the road, and the scene turned chaotic within minutes.
+I was traveling from Ondo State to Lagos State after my brother's wedding introduction when we hit a violent storm. In the middle of that storm, a major highway incident unfolded: a large trailer, a nine-seater bus, and several cars were involved in a cascading collision. The bus was trapped under the trailer, another vehicle had gone off the road, and the scene turned chaotic within minutes.
 
 That day made one problem very clear: in severe weather, drivers and first responders often have fragmented information, delayed judgment support, and no live operational assistant to help prioritize safe actions in real time.
 

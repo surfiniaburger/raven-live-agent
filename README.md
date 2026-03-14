@@ -11,7 +11,7 @@ It delivers a live voice + vision experience that goes beyond chat UI:
 ## Origin Story
 
 RAVEN is grounded in a real highway trauma moment:
-traveling from Ekiti to Lagos after a family event, we encountered a violent storm and a major multi-vehicle incident involving a trailer, a nine-seater bus, and several cars.
+traveling from Ondo to Lagos after a family event, we encountered a violent storm and a major multi-vehicle incident involving a trailer, a nine-seater bus, and several cars.
 
 That experience shaped the product thesis:
 in severe weather and chaotic road conditions, people need a live, grounded copilot that helps them make safer decisions quickly.
