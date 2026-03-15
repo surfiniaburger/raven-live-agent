@@ -27,6 +27,7 @@ echo "Project: $PROJECT_ID"
 echo "Region: $REGION"
 echo "------------------------------------------------"
 
+# GCP_PROOF: GCloud Run Deployment
 gcloud builds submit --config cloudbuild.yaml \
   --project "$PROJECT_ID" \
   --substitutions _REGION="$REGION",_GOOGLE_GENAI_USE_VERTEXAI="$GOOGLE_GENAI_USE_VERTEXAI",_GOOGLE_API_KEY="$GOOGLE_API_KEY",_VECTOR_COLLECTION_ID="$VECTOR_COLLECTION_ID",_VECTOR_FIELD="$VECTOR_FIELD",_ENABLE_BASIC_GUARDRAILS="$ENABLE_BASIC_GUARDRAILS",_MODEL_ID="$MODEL_ID"

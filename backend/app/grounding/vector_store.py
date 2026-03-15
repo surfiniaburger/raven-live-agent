@@ -8,6 +8,7 @@ from datetime import date, datetime
 from typing import Any
 
 
+# GCP_PROOF: Vertex AI Vector Search Config
 @dataclass
 class VectorStoreConfig:
     project_id: str
@@ -136,6 +137,7 @@ def load_config_from_env() -> VectorStoreConfig:
     )
 
 
+# GCP_PROOF: Vertex AI Search Clients
 def _clients():
     """Lazy import vector search SDK to avoid hard runtime failure if package is absent."""
     try:

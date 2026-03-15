@@ -16,6 +16,7 @@ graph TD
         AGENT[Live Incident Agent]
         TOOLS[Grounding & Risk Tools]
         FALLBACK[ElevenLabs Fallback Engine]
+        SOP_CATALOG[(SOP Catalog .json)]
     end
 
     subgraph External [External APIs]
@@ -42,7 +43,7 @@ graph TD
     MAIN -->|Execute| TOOLS
     TOOLS -->|Request| NIMET
     TOOLS -->|Request| WEATHER
-    TOOLS -->|SOP Search| MAIN
+    TOOLS -->|SOP Search| SOP_CATALOG
     TOOLS -->|Hybrid Search| VSEARCH
     
     %% Fallback Logic

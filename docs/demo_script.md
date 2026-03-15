@@ -64,7 +64,7 @@ This script is designed for a single-session demonstration that moves from initi
 **Narrative:** *Trigger this while the agent is midway through a long SOP list.*
 
 **User (Barge-in):** 
-> "Wait! Stop! I just identified the spill—it's coming from an industrial battery pack that fell off a trailer. The fluid is sizzling on the ground!"
+> "Wait—it's a battery! An industrial battery pack, and it's sizzling on the ground!"
 
 **Expected System Behavior:**
 - **VAD Action:** `MicVAD` detects speech start while `assistantSpeaking.current` is true.
