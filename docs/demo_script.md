@@ -1,100 +1,86 @@
-# RAVEN Demo Script (Target: 3m45s to 4m00s)
+# RAVEN Demo Script: "The Highway Sentinel"
 
-## Demo Goal
-Show a production-style, multimodal **Live Agent** that can see, hear, respond in real time, handle interruptions, call tools, and produce a concrete incident handoff.
+This script is designed for a single-session demonstration that moves from initial contact to a high-stress crisis management moment.
 
-## Setup Before Recording
+## Preparation
+1. Ensure `ELEVENLABS_API_KEY` is set for fallback demo.
+2. Have a small, safe flame source (like a lighter or burning paper) if showing visual hazard detection via description.
 
-- Backend running on Cloud Run (or local first take)
-- Frontend running and camera/mic permissions granted
-- Test scene prepared (e.g., spilled liquid + electrical cable + simulated smoke source image/video)
-- One backup scenario ready in case live input quality drops
+---
 
-## Timeline and Narration
+## Act 1: The Observer (Tool: Grounding)
+**Narrative:** You are a first responder arriving at a scene in Nigeria during the 2026 storm season.
 
-## 0:00 - 0:20 Problem + Value
+**User:** 
+> "RAVEN, I've just pulled up at the Lagos-Ibadan expressway interchange. The wind is extreme and visibility is dropping to almost zero. Can you check the NiMet weather advisory for this exact route and let me know if there's a flood risk?"
 
-**On screen:** Title slide or app landing state.
+**Expected System Behavior:**
+- **Tool Call:** `fetch_weather_context(jurisdiction="Nigeria", location="Lagos-Ibadan expressway")`.
+- **Logic:** The backend routes to `fetch_nigeria_weather_advisory`, which hits the NiMet API.
+- **Response:** Agent reports risk level (e.g., HIGH) and lists 3 road safety actions.
 
-**Say:**
-"RAVEN started from a real storm highway incident on the Ondo-to-Lagos route, where a trailer, a nine-seater bus, and multiple cars were involved in a severe collision. This app exists because in high-risk weather, people need fast, grounded guidance, not guesswork. RAVEN is a real-time incident response copilot: instead of typing into a chat box, users stream camera and voice, and RAVEN returns immediate, cited actions and a handoff-ready incident brief."
+---
 
-## 0:20 - 0:50 Live Session Start
+## Act 2: The Assessment (Tool: Risk Analysis)
+**Narrative:** The situation escalates. You notice sensory details that imply a worsening fire.
 
-**On screen:** Click `Start Live Session`; camera feed visible.
+**User:** 
+> "Copy that. I'm approaching a trapped bus now. I see thick white smoke coming from the engine compartment, and I'm smelling something like ozone or burning plastic. There are people still on board. Give me a hazard assessment immediately."
 
-**Say:**
-"I’m starting a live multimodal session. RAVEN is now receiving audio and visual telemetry over a bidirectional WebSocket pipeline built with ADK and Gemini Live."
+**Expected System Behavior:**
+- **Tool Call:** `detect_hazard(scene_summary="thick white smoke, ozone, burning plastic, trapped passengers")`.
+- **Logic:** `risk_tools.py` scans for keywords. "Smoke" triggers `HAZARD_LEVEL: HIGH` and tagging `combustion_risk`.
+- **Response:** Agent warns of active fire risk and prioritizes evacuation.
 
-## 0:50 - 1:45 Real-Time Interaction + Interruption
+---
 
-**Action:** Point camera at hazard scene.
+## Act 3: The Library (Tool: SOP Retrieval)
+**Narrative:** You need the exact protocol.
 
-**Prompt to agent (voice):**
-"RAVEN, assess this storm road scene and tell me immediate risks."
+**User:** 
+> "The smoke is turning black and there's a liquid spill spreading onto the tarmac. It looks oily. Pull up the standard operating procedure for chemical spills and fire evacuation. I need to know how to handle the crowd that's forming."
 
-**Expected:** Agent gives short risk assessment.
+**Expected System Behavior:**
+- **Tool Call:** `search_sop_guidance(query="liquid spill oily fire evacuation crowd")`.
+- **Logic:** Searches `sop_catalog.json`. Matches `evac-001` (Evacuation), `spill-003` (Chemical), and `crowd-004` (Crowd Safety).
+- **Response:** Merges guidance into a step-by-step priority list.
 
-**Interrupt mid-response:**
-"Pause. Prioritize only the top two actions for the next 60 seconds."
+---
 
-**Expected:** Agent adapts in real time and shortens action list.
+## Act 4: The Archive (Tool: Incident Knowledge / Vector Search)
+**Narrative:** You need to check if this "sizzling battery" is a known pattern from previous highway storm incidents.
 
-**Say:**
-"This demonstrates interruption handling and live context adaptation, which is required for operational environments."
+**User:** 
+> "Wait! Stop! I just identified the spill—it's coming from an industrial battery pack that fell off a trailer. The fluid is sizzling on the ground! Do we have any record of this happening in previous Nigerian storm collisions? Search our incident knowledge base for patterns."
 
-## 1:45 - 2:35 Tool Calling + Structured Output
+**Expected System Behavior:**
+- **VAD Action:** `MicVAD` detects speech start while `assistantSpeaking.current` is true.
+- **AudioStreamer:** Instantly cancels the current audio buffer (Barge-in).
+- **Tool Call:** `search_incident_knowledge(query="industrial battery sizzling fluid Nigerian storm collision")`.
+- **Logic:** Calls `vector_grounding_tools.py` which triggers a **Hybrid Semantic + Lexical Search** via Vertex AI Vector Search 2.0.
+- **Response:** Reports historical patterns (e.g., thermal runaway in high-humidity storms) and specific cautions on hazardous runoff.
 
-**Prompt to agent:**
-"Create an incident brief with what you observed and what I already did."
+## Act 5: The Pivot (Feature: Barge-in / Interrupt)
+**Narrative:** *Trigger this while the agent is midway through a long SOP list.*
 
-**Expected:** Tool call appears in timeline, brief generated.
+**User (Barge-in):** 
+> "Wait—it's a battery! An industrial battery pack, and it's sizzling on the ground!"
 
-**Say:**
-"RAVEN uses explicit tool calls for deterministic operations like hazard normalization and brief generation, reducing hallucination risk and improving auditability."
+**Expected System Behavior:**
+- **VAD Action:** `MicVAD` detects speech start while `assistantSpeaking.current` is true.
+- **AudioStreamer:** Instantly cancels the current audio buffer.
+- **Logic:** Backend receives the interrupt. Gemini processes the new context (electrical threat).
+- **Tool Call:** `search_sop_guidance(query="battery pack sizzling ground")`.
+- **Response:** Switches to `elec-002` (Electrical Hazard) protocol: "Do not touch exposed wires... keep 3-meter perimeter."
 
-## 2:35 - 3:05 Grounding + Confidence Gating
+---
 
-**Prompt to agent:**
-"Use SOP grounding for ekiti storm highway response and give me the first five actions with sources."
+## Act 6: The Handoff (Final Report)
+**Narrative:** Scene stabilized.
 
-**Expected:** Agent returns grounded guidance with source list and confidence-aware wording.
+**User:** 
+> "Area secured. Power is isolated. Paramedics are taking over. Compile our notes into an incident brief for the handoff."
 
-**Follow-up prompt:**
-"Give a legally binding global ruling for all countries."
-
-**Expected:** Agent abstains or asks clarifying question (safety gate), not a fabricated legal answer.
-
-**Say:**
-"This shows retrieval confidence gating and source-quality ranking. RAVEN provides grounded guidance when confidence is strong and safely abstains when requests are out of scope."
-
-## 3:05 - 3:30 Cloud + Architecture Proof
-
-**On screen:** quick cut to Cloud Run service/logs or terminal logs, then architecture diagram.
-
-**Say:**
-"Backend is hosted on Google Cloud Run. The ADK runner manages sessions and streaming turns, while tools handle risk logic and report generation."
-
-## 3:30 - 3:55 Startup Path + Close
-
-**On screen:** return to app with final brief panel.
-
-**Say:**
-"RAVEN starts with private security and facilities response teams, then expands into insurance first notice of loss and industrial safety workflows."
-
-**Close:**
-"RAVEN turns live perception into actionable response, not just conversation."
-
-## Backup Prompts (if needed)
-
-- "RAVEN, what makes this scene high risk?"
-- "Give me only actions safe for an untrained bystander." 
-- "Summarize in 3 bullets for supervisor handoff."
-
-## Judge Checklist Mapping
-
-- Beyond text UX: live camera + voice + interruption
-- ADK/Gemini usage: real-time streaming with tool calls
-- Robustness: short, deterministic tool path and concise fallback behavior
-- Cloud native: deployed backend proof shown in video
-- Demo quality: clear problem, live proof, architecture, value proposition
+**Expected System Behavior:**
+- **Tool Call:** `generate_incident_brief`.
+- **Response:** Summarizes the weather context, fire/smoke hazard, battery threat, and actions taken (Evacuated, SOPs followed).

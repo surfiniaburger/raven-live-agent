@@ -61,6 +61,7 @@ plugins = []
 if os.getenv("ENABLE_BASIC_GUARDRAILS", "true").lower() == "true":
     plugins.append(BasicGuardrailsPlugin())
 
+# GCP_PROOF: Gemini Live API Orchestration
 runner = Runner(
     app_name=APP_NAME,
     agent=root_agent,
