@@ -57,13 +57,13 @@ Backend is deployed on Cloud Run for managed scale and reliability.
 ## How to Run
 
 ```bash
-cd /Users/surfiniaburger/Desktop/way-back-home/raven-live-agent/backend
+cd backend
 set -a && source .env && set +a
 uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ```bash
-cd /Users/surfiniaburger/Desktop/way-back-home/raven-live-agent/frontend
+cd frontend
 npm install
 npm run dev
 ```
@@ -71,7 +71,7 @@ npm run dev
 ## Grounding Ingest + Eval
 
 ```bash
-cd /Users/surfiniaburger/Desktop/way-back-home/raven-live-agent
+# from repo root
 gcloud services enable vectorsearch.googleapis.com --project gem-creator
 
 cd backend

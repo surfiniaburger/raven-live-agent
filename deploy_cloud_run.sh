@@ -3,10 +3,10 @@ set -e
 
 cd "$(dirname "$0")"
 
-ENV_FILE=".env"
+ENV_FILE="backend/.env"
 if [ ! -f "$ENV_FILE" ]; then
   echo "Error: .env file not found at $ENV_FILE"
-  echo "Copy .env.example to .env and fill in values first."
+  echo "Copy backend/.env.example to backend/.env and fill in values first."
   exit 1
 fi
 
@@ -25,6 +25,21 @@ echo "------------------------------------------------"
 echo "Starting Cloud Build Deployment"
 echo "Project: $PROJECT_ID"
 echo "Region: $REGION"
+echo "------------------------------------------------"
+
+echo "Running Pre-Flight Checks..."
+# Run backend tests and evaluations
+cd backend
+if ! uv run pytest; then
+  echo "------------------------------------------------"
+  echo "CRITICAL: Pre-flight tests failed! Aborting deployment."
+  echo "------------------------------------------------"
+  exit 1
+fi
+cd ..
+
+echo "------------------------------------------------"
+echo "All tests passed. Submitting to Cloud Build."
 echo "------------------------------------------------"
 
 # GCP_PROOF: GCloud Run Deployment

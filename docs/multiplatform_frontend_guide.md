@@ -6,7 +6,7 @@ This guide defines the mobile-first UI constraints for web + Capacitor delivery.
 
 Installed local skill path:
 
-- `/Users/surfiniaburger/.codex/skills/raven-multiplatform-frontend/SKILL.md`
+- `~/.codex/skills/raven-multiplatform-frontend/SKILL.md`
 
 Included templates:
 

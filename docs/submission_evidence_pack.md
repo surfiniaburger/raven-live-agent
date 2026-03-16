@@ -51,7 +51,6 @@ Record a short clip (30-60 seconds) showing all of the following:
 
 ```bash
 # from repo root
-cd /Users/surfiniaburger/Desktop/way-back-home/raven-live-agent
 
 # confirm API enabled
 gcloud services list --enabled --project gem-creator | rg vectorsearch
