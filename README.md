@@ -149,7 +149,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 # Create backend .env first
-cp .env.example .env
+cp .env.example .env  # uses backend/.env.example
 
 python scripts/ingest_vector_data.py \
   --input data/sources/incident_knowledge.jsonl \
@@ -221,7 +221,7 @@ Deploy:
 
 ```bash
 # from repo root
-cp .env.example .env
+cp backend/.env.example backend/.env
 ./deploy_cloud_run.sh
 ```
 

@@ -6,7 +6,7 @@ cd "$(dirname "$0")"
 ENV_FILE="backend/.env"
 if [ ! -f "$ENV_FILE" ]; then
   echo "Error: .env file not found at $ENV_FILE"
-  echo "Ensure backend/.env exists and fill in values first."
+  echo "Copy backend/.env.example to backend/.env and fill in values first."
   exit 1
 fi
 
