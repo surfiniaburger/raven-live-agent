@@ -72,6 +72,7 @@ From existing `way-back-home` and ADK sample patterns:
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate
+cp .env.example .env
 pip install -r requirements.txt
 
 # Choose one auth mode
