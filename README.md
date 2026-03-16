@@ -17,9 +17,9 @@ That experience shaped the product thesis:
 in severe weather and chaotic road conditions, people need a live, grounded copilot that helps them make safer decisions quickly.
 
 Full narrative:
-- [founder_story.md](/Users/surfiniaburger/Desktop/way-back-home/raven-live-agent/docs/founder_story.md)
-- [submission_evidence_pack.md](/Users/surfiniaburger/Desktop/way-back-home/raven-live-agent/docs/submission_evidence_pack.md)
-- [multiplatform_frontend_guide.md](/Users/surfiniaburger/Desktop/way-back-home/raven-live-agent/docs/multiplatform_frontend_guide.md)
+- [founder_story.md](docs/founder_story.md)
+- [submission_evidence_pack.md](docs/submission_evidence_pack.md)
+- [multiplatform_frontend_guide.md](docs/multiplatform_frontend_guide.md)
 
 ## Hackathon Fit
 
@@ -69,7 +69,7 @@ From existing `way-back-home` and ADK sample patterns:
 ## 1. Backend
 
 ```bash
-cd /Users/surfiniaburger/Desktop/way-back-home/raven-live-agent/backend
+cd backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -103,7 +103,7 @@ curl http://localhost:8000/health
 ## 2. Frontend
 
 ```bash
-cd /Users/surfiniaburger/Desktop/way-back-home/raven-live-agent/frontend
+cd frontend
 npm install
 npm run dev
 ```
@@ -123,12 +123,12 @@ VITE_WS_BASE_URL=ws://<LAN_OR_PUBLIC_HOST>:8000 npm run dev
 
 Android client lives in:
 
-- `/Users/surfiniaburger/Desktop/way-back-home/raven-live-agent/android`
+- android/
 
 It supports direct phone camera + mic streaming to the same ADK WebSocket backend.
 See mobile setup and backend URL config in:
 
-- [Android README](/Users/surfiniaburger/Desktop/way-back-home/raven-live-agent/android/README.md)
+- [Android README](android/README.md)
 
 ## 4. Grounding With Vector Search 2.0
 
@@ -144,7 +144,7 @@ The current synthetic internal corpus is story-aligned to Nigerian highway storm
 ### Ingest sample corpus
 
 ```bash
-cd /Users/surfiniaburger/Desktop/way-back-home/raven-live-agent/backend
+cd backend
 source .venv/bin/activate
 pip install -r requirements.txt
 
@@ -166,15 +166,15 @@ python scripts/ingest_vector_data.py \
 
 ### Data quality references
 
-- Source quality policy: [source_quality_policy.md](/Users/surfiniaburger/Desktop/way-back-home/raven-live-agent/docs/data/source_quality_policy.md)
-- Authoritative source catalog starter: [authoritative_source_catalog.json](/Users/surfiniaburger/Desktop/way-back-home/raven-live-agent/backend/data/sources/authoritative_source_catalog.json)
+- Source quality policy: [source_quality_policy.md](docs/data/source_quality_policy.md)
+- Authoritative source catalog starter: [authoritative_source_catalog.json](backend/data/sources/authoritative_source_catalog.json)
 
 ## 4.1 Grounding Evaluation
 
 Run confidence-gating evaluation:
 
 ```bash
-cd /Users/surfiniaburger/Desktop/way-back-home/raven-live-agent/backend
+cd backend
 source .venv/bin/activate
 
 python eval/eval_grounding.py \
@@ -195,7 +195,7 @@ If Vector Search is not yet provisioned, retrieval tools use a local JSONL fallb
 Run backend unit tests (including ElevenLabs fallback harness):
 
 ```bash
-cd /Users/surfiniaburger/Desktop/way-back-home/raven-standalone/backend
+cd backend
 uv run pytest -q
 ```
 
@@ -211,16 +211,16 @@ This is intended for policy/procedure/legal-sensitive guidance before final answ
 
 Files added:
 
-- `/Users/surfiniaburger/Desktop/way-back-home/raven-live-agent/cloudbuild.yaml`
-- `/Users/surfiniaburger/Desktop/way-back-home/raven-live-agent/deploy_cloud_run.sh`
-- `/Users/surfiniaburger/Desktop/way-back-home/raven-live-agent/.env.example`
-- `/Users/surfiniaburger/Desktop/way-back-home/raven-live-agent/backend/.env.example`
+- `cloudbuild.yaml`
+- `deploy_cloud_run.sh`
+- `.env.example`
+- `backend/.env.example`
 - backend/frontend Dockerfiles
 
 Deploy:
 
 ```bash
-cd /Users/surfiniaburger/Desktop/way-back-home/raven-live-agent
+# from repo root
 cp .env.example .env
 ./deploy_cloud_run.sh
 ```
@@ -288,7 +288,7 @@ Completed on **March 10, 2026**:
 ## Cloud Grounding Runbook
 
 ```bash
-cd /Users/surfiniaburger/Desktop/way-back-home/raven-live-agent
+# from repo root
 
 # one-time API enable
 gcloud services enable vectorsearch.googleapis.com --project gem-creator
